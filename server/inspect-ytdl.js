@@ -1,0 +1,1 @@
+const youtubedl = require(" youtube-dl-exec\); console.log(\type\, typeof youtubedl); console.log(\keys\, Object.keys(youtubedl)); console.log(\raw\, youtubedl.raw); console.log(\default type\, typeof youtubedl.default); console.log(\default keys\, youtubedl.default ? Object.keys(youtubedl.default) : null);

@@ -1,0 +1,6 @@
+const youtubedl = require('youtube-dl-exec')
+const fs = require('fs')
+console.log('keys', Object.keys(youtubedl))
+console.log('has exec', typeof youtubedl.exec)
+console.log('binaryPath', youtubedl.constants?.YOUTUBE_DL_PATH)
+console.log('binaryExists', Boolean(youtubedl.constants && fs.existsSync(youtubedl.constants.YOUTUBE_DL_PATH)))
