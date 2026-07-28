@@ -1,4 +1,5 @@
 require('dotenv').config()
+const path = require('path')
 const express = require('express')
 const cors = require('cors')
 const helmet = require('helmet')
@@ -14,6 +15,7 @@ app.use(helmet())
 app.use(cors())
 app.use(morgan('tiny'))
 app.use(express.json())
+app.use(express.static(path.join(__dirname, '../client/dist')))
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/ytd'
 mongoose
@@ -311,6 +313,10 @@ app.get('/api/download', async (req, res) => {
       res.status(500).json({ error: 'Download failed. Please try again.' })
     }
   }
+})
+
+app.get('*', (_, res) => {
+  res.sendFile(path.join(__dirname, '../client/dist/index.html'))
 })
 
 app.listen(port, () => {
