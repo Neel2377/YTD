@@ -5,6 +5,7 @@ const cors = require('cors')
 const helmet = require('helmet')
 const morgan = require('morgan')
 const mongoose = require('mongoose')
+const ytdl = require('ytdl-core')
 const youtubedl = require('youtube-dl-exec')
 const Video = require('./models/Video')
 
@@ -18,10 +19,12 @@ app.use(express.json())
 app.use(express.static(path.join(__dirname, '../client/dist')))
 
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/ytd'
-mongoose
-  .connect(mongoUri)
-  .then(() => console.log('Connected to MongoDB:', mongoUri))
-  .catch((err) => console.error('MongoDB connection failed:', err))
+if (process.env.NODE_ENV !== 'test') {
+  mongoose
+    .connect(mongoUri)
+    .then(() => console.log('Connected to MongoDB:', mongoUri))
+    .catch((err) => console.error('MongoDB connection failed:', err))
+}
 
 const normalizeYoutubeUrl = (url) => {
   if (!url) return ''
@@ -56,14 +59,26 @@ const isValidYouTubeUrl = (url) => {
 }
 
 const fetchVideoInfo = async (videoUrl) => {
-  return youtubedl(videoUrl, {
-    dumpSingleJson: true,
-    skipDownload: true,
-    noWarnings: true,
-    noCallHome: true,
-    preferFreeFormats: true,
-    youtubeSkipDashManifest: true,
-  })
+  try {
+    const info = await ytdl.getInfo(videoUrl, {
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+      },
+    })
+    return info
+  } catch (error) {
+    console.warn('ytdl-core metadata failed, falling back to youtube-dl-exec:', error.message)
+    return youtubedl(videoUrl, {
+      dumpSingleJson: true,
+      skipDownload: true,
+      noWarnings: true,
+      noCallHome: true,
+      preferFreeFormats: true,
+      youtubeSkipDashManifest: true,
+    })
+  }
 }
 
 const extractVideoId = (url) => {
@@ -138,78 +153,37 @@ const findBestAudioFormat = (formats) => {
 const formatDownloadOptions = (infoFormats) => {
   const seen = new Set()
   const formats = []
-  const availableHeights = new Set()
 
-  infoFormats
-    .filter((format) => format.format_id && format.height)
-    .forEach((format) => {
-      if (format.vcodec !== 'none') {
-        availableHeights.add(Number(format.height))
-      }
-    })
+  ;(infoFormats || []).forEach((format) => {
+    const itag = format.format_id || format.id || format.itag
+    if (!itag || seen.has(String(itag))) return
 
-  const orderedHeights = [2160, 1440, 1080, 720, 480, 360, 240]
-  const bestAudio = findBestAudioFormat(infoFormats)
+    const height = Number(format.height || format.qualityLabel?.match(/(\d+)p/)?.[1] || 0)
+    const hasVideo = format.vcodec !== 'none' || format.hasVideo || Boolean(height) || Boolean(format.width)
+    const hasAudio = format.acodec !== 'none' || format.hasAudio || Boolean(format.audioBitrate)
+    if (!hasVideo || (!hasAudio && !height)) return
 
-  orderedHeights.forEach((height) => {
-    const hasVideoAtHeight = Array.from(availableHeights).some((h) => h >= height)
-    if (!hasVideoAtHeight) return
+    const container = format.ext || format.container || 'mp4'
+    const mimeType = format.mime_type || format.mimeType || `video/${container}`
+    const qualityLabel = format.qualityLabel || format.format || (height ? `${height}p` : 'Unknown quality')
+    const sizeBytes = format.filesize_approx || format.contentLength || 0
+    const size = sizeBytes ? bytesToMB(Number(sizeBytes)) : null
 
-    const videoFormat = findBestVideoForHeight(infoFormats, height)
-    const estimatedSize = videoFormat && bestAudio
-      ? bytesToMB((videoFormat.filesize_approx || 0) + (bestAudio.filesize_approx || 0))
-      : videoFormat
-      ? bytesToMB(videoFormat.filesize_approx)
-      : null
-
-    const itag = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`
-    if (seen.has(itag)) return
-    seen.add(itag)
-
+    seen.add(String(itag))
     formats.push({
-      itag,
-      qualityLabel: `${height}p`,
-      container: 'mp4',
-      size: estimatedSize,
-      mimeType: videoFormat?.mime_type || 'video/mp4',
+      itag: String(itag),
+      qualityLabel,
+      container,
+      size,
+      mimeType,
     })
   })
 
-  if (!seen.has('best')) {
-    const bestVideo = infoFormats
-      .filter((format) => format.format_id && format.vcodec !== 'none')
-      .sort((a, b) => ((b.height || 0) - (a.height || 0)) || ((b.filesize_approx || 0) - (a.filesize_approx || 0)))[0]
-
-    const bestSize = bestVideo && bestAudio
-      ? bytesToMB((bestVideo.filesize_approx || 0) + (bestAudio.filesize_approx || 0))
-      : bestVideo
-      ? bytesToMB(bestVideo.filesize_approx)
-      : null
-
-    formats.push({
-      itag: 'best',
-      qualityLabel: 'Best available',
-      container: 'mp4',
-      size: bestSize,
-      mimeType: bestVideo?.mime_type || 'video/mp4',
-    })
-  }
-
-  infoFormats
-    .filter((format) => format.format_id && !seen.has(format.format_id))
-    .forEach((format) => {
-      if (format.vcodec === 'none' || format.acodec === 'none') return
-      seen.add(format.format_id)
-      formats.push({
-        itag: format.format_id,
-        qualityLabel: format.format || `${format.height || 'unknown'}p`,
-        container: format.ext || 'mp4',
-        size: format.filesize_approx ? bytesToMB(format.filesize_approx) : null,
-        mimeType: format.mime_type || `video/${format.ext || 'mp4'}`,
-      })
-    })
-
-  return formats
+  return formats.sort((a, b) => {
+    const aHeight = Number(a.qualityLabel.match(/(\d+)p/)?.[1] || 0)
+    const bHeight = Number(b.qualityLabel.match(/(\d+)p/)?.[1] || 0)
+    return bHeight - aHeight
+  })
 }
 
 app.get('/api/metadata', async (req, res) => {
@@ -267,42 +241,33 @@ app.get('/api/download', async (req, res) => {
     res.setHeader('Content-Type', mimeType)
 
     console.log('Starting download for', normalizedUrl, 'itag=', itag)
-    const downloadProcess = youtubedl.exec(normalizedUrl, {
-      format: itag,
-      output: '-',
-      quiet: true,
-      noWarnings: true,
-      noCallHome: true,
-      preferFreeFormats: true,
-      youtubeSkipDashManifest: true,
-      mergeOutputFormat: 'mp4',
-    }, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+    const info = await ytdl.getInfo(normalizedUrl, {
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        },
+      },
     })
-
-    if (!downloadProcess || !downloadProcess.stdout) {
-      throw new Error('Download stream unavailable')
+    const selectedFormat = info.formats.find((format) => String(format.itag) === String(itag)) || info.formats[0]
+    if (!selectedFormat) {
+      throw new Error('No downloadable format found for selected quality')
     }
 
-    downloadProcess.stderr.on('data', (chunk) => console.error('download stderr:', chunk.toString()))
-    downloadProcess.stdout.on('error', (err) => console.error('download stdout error', err))
-    downloadProcess.stdout.pipe(res)
-
-    downloadProcess.on('close', async (code) => {
-      console.log('download process closed', code)
-      if (!res.writableEnded) {
-        res.end()
-      }
-    })
-
-    downloadProcess.on('error', (err) => {
-      console.error('download process error', err)
+    const downloadStream = ytdl.downloadFromInfo(info, { format: selectedFormat })
+    downloadStream.on('error', (err) => {
+      console.error('download stream error', err)
       if (!res.headersSent) {
         res.status(500).json({ error: 'Download failed. Please try again.' })
       } else if (!res.writableEnded) {
         res.end()
       }
     })
+    downloadStream.on('end', () => {
+      if (!res.writableEnded) {
+        res.end()
+      }
+    })
+    downloadStream.pipe(res)
 
     try {
       await trackDownload(normalizedUrl, itag)
@@ -311,8 +276,8 @@ app.get('/api/download', async (req, res) => {
     }
 
     res.on('close', () => {
-      if (!downloadProcess.killed) {
-        downloadProcess.kill('SIGTERM')
+      if (downloadStream && typeof downloadStream.destroy === 'function') {
+        downloadStream.destroy()
       }
     })
   } catch (error) {
@@ -327,6 +292,16 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../client/dist/index.html'))
 })
 
-app.listen(port, () => {
-  console.log(`YouTube downloader API running on http://localhost:${port}`)
-})
+if (require.main === module) {
+  app.listen(port, () => {
+    console.log(`YouTube downloader API running on http://localhost:${port}`)
+  })
+}
+
+module.exports = {
+  app,
+  normalizeYoutubeUrl,
+  isValidYouTubeUrl,
+  fetchVideoInfo,
+  formatDownloadOptions,
+}
