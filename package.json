@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "build": "npm --prefix client install && npm --prefix client run build",
+    "postinstall": "npm --prefix client install && npm --prefix client run build",
     "start": "npm --prefix server start"
   },
   "dependencies": {

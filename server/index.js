@@ -228,7 +228,11 @@ app.get('/api/metadata', async (req, res) => {
       return res.status(500).json({ error: 'Unable to find downloadable formats.' })
     }
 
-    await saveVideoMetadata(normalizedUrl, info, formats)
+    try {
+      await saveVideoMetadata(normalizedUrl, info, formats)
+    } catch (dbError) {
+      console.warn('Unable to save metadata to MongoDB:', dbError.message || dbError)
+    }
 
     res.json({
       title: info.title || info.videoDetails?.title || 'Unknown title',
@@ -300,7 +304,11 @@ app.get('/api/download', async (req, res) => {
       }
     })
 
-    await trackDownload(normalizedUrl, itag)
+    try {
+      await trackDownload(normalizedUrl, itag)
+    } catch (dbError) {
+      console.warn('Unable to track download in MongoDB:', dbError.message || dbError)
+    }
 
     res.on('close', () => {
       if (!downloadProcess.killed) {
