@@ -323,7 +323,7 @@ app.get('/api/download', async (req, res) => {
   }
 })
 
-app.get('*', (_, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../client/dist/index.html'))
 })
 
