@@ -1,9 +1,25 @@
 const test = require('node:test')
 const assert = require('node:assert/strict')
-const { normalizeYoutubeUrl, formatDownloadOptions } = require('../index.js')
+const { normalizeYoutubeUrl, isValidYouTubeUrl, formatDownloadOptions } = require('../index.js')
 
 test('normalizeYoutubeUrl converts youtu.be links to watch URLs', () => {
   assert.equal(normalizeYoutubeUrl('https://youtu.be/dQw4w9WgXcQ'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+})
+
+test('normalizeYoutubeUrl converts short YouTube IDs to watch URLs', () => {
+  assert.equal(normalizeYoutubeUrl('dQw4w9WgXcQ'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+})
+
+test('normalizeYoutubeUrl drops extra query params and keeps watch links valid', () => {
+  assert.equal(normalizeYoutubeUrl('https://youtu.be/dQw4w9WgXcQ?si=abcdef'), 'https://www.youtube.com/watch?v=dQw4w9WgXcQ')
+})
+
+test('isValidYouTubeUrl accepts youtu.be URLs', () => {
+  assert.ok(isValidYouTubeUrl('https://youtu.be/dQw4w9WgXcQ'))
+})
+
+test('isValidYouTubeUrl accepts plain YouTube IDs', () => {
+  assert.ok(isValidYouTubeUrl('dQw4w9WgXcQ'))
 })
 
 test('formatDownloadOptions converts ytdl-core-style formats into UI-friendly options', () => {

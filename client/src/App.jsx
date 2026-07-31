@@ -9,6 +9,26 @@ const formatDuration = (seconds) => {
   return `${mins}m ${secs.toString().padStart(2, '0')}s`
 }
 
+const isValidYoutubeUrl = (url) => {
+  if (!url) return false
+  const trimmed = url.trim()
+  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) return true
+
+  try {
+    const parsed = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`)
+    const host = parsed.hostname.replace(/^www\./, '')
+    return [
+      'youtube.com',
+      'm.youtube.com',
+      'music.youtube.com',
+      'youtu.be',
+      'youtube-nocookie.com',
+    ].includes(host)
+  } catch {
+    return false
+  }
+}
+
 const backendOrigin = import.meta.env.DEV ? 'http://localhost:5000' : ''
 
 function App() {
@@ -23,6 +43,13 @@ function App() {
     setError('')
     setMetadata(null)
     setSelectedItag('')
+
+    if (!isValidYoutubeUrl(videoUrl)) {
+      setError('Please enter a valid YouTube URL or video ID before fetching metadata.')
+      setStatus('error')
+      return
+    }
+
     setStatus('loading')
 
     try {

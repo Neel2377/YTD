@@ -28,22 +28,50 @@ if (process.env.NODE_ENV !== 'test') {
 
 const normalizeYoutubeUrl = (url) => {
   if (!url) return ''
-  try {
-    const parsed = new URL(url.includes('://') ? url : `https://www.youtube.com/watch?v=${url}`)
+  const trimmed = url.trim()
+  if (!trimmed) return ''
+
+  const normalizeFromUrl = (inputUrl) => {
+    const parsed = new URL(inputUrl)
     const host = parsed.hostname.replace(/^www\./, '')
 
     if (host === 'youtu.be') {
-      return `https://www.youtube.com/watch?v=${parsed.pathname.slice(1)}`
+      const videoId = parsed.pathname.slice(1)
+      return `https://www.youtube.com/watch?v=${videoId}`
     }
 
-    if (host === 'youtube.com' || host === 'm.youtube.com') {
+    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host === 'youtube-nocookie.com') {
+      const videoId = parsed.searchParams.get('v')
+      if (videoId) {
+        return `https://www.youtube.com/watch?v=${videoId}`
+      }
+
+      if (parsed.pathname.startsWith('/shorts/')) {
+        return `https://www.youtube.com/watch?v=${parsed.pathname.split('/').pop()}`
+      }
+
+      if (parsed.pathname.startsWith('/embed/')) {
+        return `https://www.youtube.com/watch?v=${parsed.pathname.split('/').pop()}`
+      }
+
       return parsed.toString()
     }
-  } catch (err) {
-    return `https://www.youtube.com/watch?v=${url}`
+
+    return inputUrl
   }
 
-  return url
+  try {
+    if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) {
+      if (trimmed.startsWith('youtu.be/') || trimmed.startsWith('www.youtu.be/') || trimmed.startsWith('youtube.com/') || trimmed.startsWith('www.youtube.com/') || trimmed.startsWith('m.youtube.com/') || trimmed.startsWith('music.youtube.com/') || trimmed.startsWith('youtube-nocookie.com/')) {
+        return normalizeFromUrl(`https://${trimmed}`)
+      }
+      return `https://www.youtube.com/watch?v=${trimmed}`
+    }
+
+    return normalizeFromUrl(trimmed)
+  } catch (err) {
+    return `https://www.youtube.com/watch?v=${trimmed}`
+  }
 }
 
 const isValidYouTubeUrl = (url) => {
@@ -52,7 +80,7 @@ const isValidYouTubeUrl = (url) => {
     const normalized = normalizeYoutubeUrl(url)
     const parsed = new URL(normalized)
     const host = parsed.hostname.replace(/^www\./, '')
-    return host === 'youtube.com' || host === 'm.youtube.com'
+    return host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host === 'youtu.be' || host === 'youtube-nocookie.com'
   } catch (err) {
     return false
   }
