@@ -212,6 +212,13 @@ body::after {
   color: rgba(255, 255, 255, 0.4);
 }
 
+.input-hint {
+  margin: -8px 0 0;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;

@@ -28,47 +28,50 @@ if (process.env.NODE_ENV !== 'test') {
 
 const normalizeYoutubeUrl = (url) => {
   if (!url) return ''
-  const trimmed = url.trim()
+  const trimmed = String(url).trim()
   if (!trimmed) return ''
 
-  const normalizeFromUrl = (inputUrl) => {
-    const parsed = new URL(inputUrl)
-    const host = parsed.hostname.replace(/^www\./, '')
+  const buildWatchUrl = (videoId) => `https://www.youtube.com/watch?v=${videoId}`
+  const parseUrlOrThrow = (input) => {
+    try {
+      return new URL(input)
+    } catch (err) {
+      return new URL(`https://${input}`)
+    }
+  }
+
+  try {
+    const parsed = parseUrlOrThrow(trimmed)
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase()
+    const path = parsed.pathname || ''
 
     if (host === 'youtu.be') {
-      const videoId = parsed.pathname.slice(1)
-      return `https://www.youtube.com/watch?v=${videoId}`
+      const videoId = path.slice(1)
+      return buildWatchUrl(videoId)
     }
 
-    if (host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host === 'youtube-nocookie.com') {
+    if (['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com'].includes(host)) {
       const videoId = parsed.searchParams.get('v')
       if (videoId) {
-        return `https://www.youtube.com/watch?v=${videoId}`
+        return buildWatchUrl(videoId)
       }
 
-      if (parsed.pathname.startsWith('/shorts/')) {
-        return `https://www.youtube.com/watch?v=${parsed.pathname.split('/').pop()}`
+      if (path.startsWith('/shorts/')) {
+        return buildWatchUrl(path.split('/').pop() || '')
       }
 
-      if (parsed.pathname.startsWith('/embed/')) {
-        return `https://www.youtube.com/watch?v=${parsed.pathname.split('/').pop()}`
+      if (path.startsWith('/embed/')) {
+        return buildWatchUrl(path.split('/').pop() || '')
       }
 
       return parsed.toString()
     }
 
-    return inputUrl
-  }
-
-  try {
-    if (!/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(trimmed)) {
-      if (trimmed.startsWith('youtu.be/') || trimmed.startsWith('www.youtu.be/') || trimmed.startsWith('youtube.com/') || trimmed.startsWith('www.youtube.com/') || trimmed.startsWith('m.youtube.com/') || trimmed.startsWith('music.youtube.com/') || trimmed.startsWith('youtube-nocookie.com/')) {
-        return normalizeFromUrl(`https://${trimmed}`)
-      }
-      return `https://www.youtube.com/watch?v=${trimmed}`
+    if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) {
+      return buildWatchUrl(trimmed)
     }
 
-    return normalizeFromUrl(trimmed)
+    return trimmed
   } catch (err) {
     return `https://www.youtube.com/watch?v=${trimmed}`
   }
@@ -76,11 +79,15 @@ const normalizeYoutubeUrl = (url) => {
 
 const isValidYouTubeUrl = (url) => {
   if (!url) return false
+  const trimmed = String(url).trim()
+  if (!trimmed) return false
+  if (/^[A-Za-z0-9_-]{11}$/.test(trimmed)) return true
+
   try {
-    const normalized = normalizeYoutubeUrl(url)
+    const normalized = normalizeYoutubeUrl(trimmed)
     const parsed = new URL(normalized)
-    const host = parsed.hostname.replace(/^www\./, '')
-    return host === 'youtube.com' || host === 'm.youtube.com' || host === 'music.youtube.com' || host === 'youtu.be' || host === 'youtube-nocookie.com'
+    const host = parsed.hostname.replace(/^www\./, '').toLowerCase()
+    return ['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be', 'youtube-nocookie.com'].includes(host)
   } catch (err) {
     return false
   }
@@ -216,7 +223,7 @@ const formatDownloadOptions = (infoFormats) => {
 
 app.get('/api/metadata', async (req, res) => {
   try {
-    const videoUrl = req.query.videoUrl
+    const videoUrl = String(req.query.videoUrl || '').trim()
 
     if (!videoUrl || !isValidYouTubeUrl(videoUrl)) {
       return res.status(400).json({ error: 'Please provide a valid YouTube URL.' })

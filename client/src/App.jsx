@@ -53,8 +53,9 @@ function App() {
     setStatus('loading')
 
     try {
-      const response = await axios.get('/api/metadata', {
-        params: { videoUrl },
+const trimmedUrl = videoUrl.trim()
+    const response = await axios.get('/api/metadata', {
+      params: { videoUrl: trimmedUrl },
       })
 
       setMetadata(response.data)
@@ -95,6 +96,7 @@ function App() {
               value={videoUrl}
               onChange={(event) => setVideoUrl(event.target.value)}
             />
+            <p className="input-hint">Examples: YouTube watch link, youtu.be share link, or plain video ID.</p>
 
             <div className="button-row">
               <button type="submit" className="primary-button" disabled={status === 'loading'}>
