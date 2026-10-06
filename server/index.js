@@ -102,7 +102,17 @@ const fetchVideoInfo = async (videoUrl) => {
     skipDownload: true,
     noWarnings: true,
     preferFreeFormats: true,
+    jsRuntimes: 'node',
   })
+}
+
+const getYtDlpErrorMessage = (error) => {
+  const output = String(error.stderr || error.message || '').trim()
+  const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const detail = lines.findLast((line) => /^ERROR:/i.test(line)) || lines.at(-1)
+  return (detail || 'The video extractor could not process this link.')
+    .replace(/^ERROR:\s*/i, '')
+    .slice(0, 300)
 }
 
 const extractVideoId = (url) => {
@@ -233,8 +243,9 @@ app.get('/api/metadata', async (req, res) => {
       formats,
     })
   } catch (error) {
-    console.error(error)
-    res.status(500).json({ error: 'Unable to load video information. Please try another YouTube link.' })
+    const detail = getYtDlpErrorMessage(error)
+    console.error('Unable to load YouTube metadata:', error.stderr || error.message || error)
+    res.status(502).json({ error: `Unable to load video information: ${detail}` })
   }
 })
 
@@ -260,6 +271,7 @@ app.get('/api/download', async (req, res) => {
           output: outputTemplate,
           mergeOutputFormat: 'mkv',
           ffmpegLocation: ffmpegPath,
+          jsRuntimes: 'node',
           noWarnings: true,
           noProgress: true,
           noPlaylist: true,
@@ -322,7 +334,7 @@ app.get('/api/download', async (req, res) => {
       if (clientDisconnected) return
       console.error('yt-dlp download failed:', error.message || error)
       if (!res.headersSent) {
-        res.status(500).json({ error: 'Download failed. Please try another quality or video.' })
+        res.status(502).json({ error: `Download failed: ${getYtDlpErrorMessage(error)}` })
       }
     } finally {
       res.removeListener('close', stopDownloadOnDisconnect)
