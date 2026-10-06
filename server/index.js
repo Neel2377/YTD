@@ -99,13 +99,30 @@ const isValidYouTubeUrl = (url) => {
 }
 
 const fetchVideoInfo = async (videoUrl) => {
-  return youtubedl(videoUrl, {
+  const options = {
     dumpSingleJson: true,
     skipDownload: true,
     noWarnings: true,
+    noProgress: true,
     preferFreeFormats: true,
     jsRuntimes: 'node',
-  })
+    remoteComponents: 'ejs:github',
+  }
+
+  try {
+    return await youtubedl(videoUrl, options)
+  } catch (error) {
+    const errorText = String(error.stderr || error.message || '')
+    if (!/failed to extract any player response|player response/i.test(errorText)) throw error
+
+    console.warn('Default YouTube player extraction failed; retrying with android,web clients.')
+    const info = await youtubedl(videoUrl, {
+      ...options,
+      extractorArgs: 'youtube:player_client=android,web',
+    })
+    info._youtubeExtractorArgs = 'youtube:player_client=android,web'
+    return info
+  }
 }
 
 const getYtDlpErrorMessage = (error) => {
@@ -190,7 +207,7 @@ const findBestAudioFormat = (formats) => {
     .sort((a, b) => ((b.abr || 0) - (a.abr || 0)) || ((b.filesize_approx || 0) - (a.filesize_approx || 0)))[0]
 }
 
-const formatDownloadOptions = (infoFormats) => {
+const formatDownloadOptions = (infoFormats, extractorArgs = '') => {
   const formatsByHeight = new Map()
 
   ;(infoFormats || []).forEach((format) => {
@@ -210,7 +227,7 @@ const formatDownloadOptions = (infoFormats) => {
       const sizeBytes = format.filesize || format.filesize_approx || format.contentLength || 0
 
       return {
-        itag: `height:${height}`,
+        itag: `height:${height}${extractorArgs ? ':android,web' : ''}`,
         qualityLabel: `${height}p`,
         container: 'mkv',
         size: sizeBytes ? bytesToMB(Number(sizeBytes)) : null,
@@ -229,7 +246,7 @@ app.get('/api/metadata', async (req, res) => {
 
     const normalizedUrl = normalizeYoutubeUrl(videoUrl)
     const info = await fetchVideoInfo(normalizedUrl)
-    const formats = formatDownloadOptions(info.formats || [])
+    const formats = formatDownloadOptions(info.formats || [], info._youtubeExtractorArgs || '')
 
     if (!formats.length) {
       return res.status(500).json({ error: 'Unable to find downloadable formats.' })
@@ -259,7 +276,8 @@ app.get('/api/download', async (req, res) => {
   try {
     const videoUrl = req.query.videoUrl
     const itag = req.query.itag
-    const selectedHeight = String(itag || '').match(/^height:(\d{2,4})$/)?.[1]
+    const selectedFormat = String(itag || '').match(/^height:(\d{2,4})(?::(android,web))?$/)
+    const selectedHeight = selectedFormat?.[1]
 
     if (!videoUrl || !selectedHeight || !isValidYouTubeUrl(videoUrl)) {
       return res.status(400).json({ error: 'Missing or invalid video URL / format.' })
@@ -278,6 +296,8 @@ app.get('/api/download', async (req, res) => {
           mergeOutputFormat: 'mkv',
           ffmpegLocation: ffmpegPath,
           jsRuntimes: 'node',
+          remoteComponents: 'ejs:github',
+          ...(selectedFormat[2] ? { extractorArgs: `youtube:player_client=${selectedFormat[2]}` } : {}),
           noWarnings: true,
           noProgress: true,
           noPlaylist: true,

@@ -44,3 +44,11 @@ test('formatDownloadOptions excludes separate video-only and audio-only streams'
   assert.deepEqual(formats.map((format) => format.itag), ['height:2160', 'height:360'])
   assert.equal(formats[0].qualityLabel, '2160p')
 })
+
+test('formatDownloadOptions marks formats that require fallback player clients', () => {
+  const formats = formatDownloadOptions([
+    { format_id: '18', ext: 'mp4', height: 360, vcodec: 'avc1', acodec: 'mp4a' },
+  ], 'youtube:player_client=android,web')
+
+  assert.equal(formats[0].itag, 'height:360:android,web')
+})
