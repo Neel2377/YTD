@@ -21,12 +21,14 @@ app.use(morgan('tiny'))
 app.use(express.json())
 app.use(express.static(path.join(__dirname, '../client/dist')))
 
-const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/ytd'
-if (process.env.NODE_ENV !== 'test') {
+const mongoUri = process.env.MONGODB_URI || (process.env.NODE_ENV === 'production' ? '' : 'mongodb://127.0.0.1:27017/ytd')
+if (mongoUri && process.env.NODE_ENV !== 'test') {
   mongoose
     .connect(mongoUri)
     .then(() => console.log('Connected to MongoDB:', mongoUri))
     .catch((err) => console.error('MongoDB connection failed:', err))
+} else if (!mongoUri && process.env.NODE_ENV === 'production') {
+  console.warn('MONGODB_URI is not configured; video history and download tracking are disabled.')
 }
 
 const normalizeYoutubeUrl = (url) => {
@@ -125,6 +127,8 @@ const extractVideoId = (url) => {
 }
 
 const saveVideoMetadata = async (normalizedUrl, info, formats) => {
+  if (mongoose.connection.readyState !== 1) return null
+
   const videoId = extractVideoId(normalizedUrl)
   const thumbnail = info.thumbnails?.[info.thumbnails.length - 1]?.url || info.thumbnail || ''
 
@@ -153,6 +157,8 @@ const saveVideoMetadata = async (normalizedUrl, info, formats) => {
 }
 
 const trackDownload = async (normalizedUrl, itag) => {
+  if (mongoose.connection.readyState !== 1) return null
+
   const videoId = extractVideoId(normalizedUrl)
   return Video.findOneAndUpdate(
     { videoId },
