@@ -29,7 +29,7 @@ const isValidYoutubeUrl = (url) => {
   }
 }
 
-const backendOrigin = import.meta.env.DEV ? 'http://localhost:5000' : ''
+const backendOrigin = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000' : window.location.origin)
 
 function App() {
   const [videoUrl, setVideoUrl] = useState('')
@@ -53,16 +53,22 @@ function App() {
     setStatus('loading')
 
     try {
-const trimmedUrl = videoUrl.trim()
-    const response = await axios.get('/api/metadata', {
-      params: { videoUrl: trimmedUrl },
+      const trimmedUrl = videoUrl.trim()
+      const apiUrl = `${backendOrigin}/api/metadata`
+      const response = await axios.get(apiUrl, {
+        params: { videoUrl: trimmedUrl },
       })
 
-      setMetadata(response.data)
-      setSelectedItag(response.data.formats[0]?.itag ?? '')
+      const data = response.data
+      if (!data || !Array.isArray(data.formats) || data.formats.length === 0) {
+        throw new Error('Invalid metadata response from the server.')
+      }
+
+      setMetadata(data)
+      setSelectedItag(data.formats[0]?.itag ?? '')
       setStatus('ready')
     } catch (err) {
-      const message = err.response?.data?.error || 'Unable to load video info. Check the URL and try again.'
+      const message = err.response?.data?.error || err.message || 'Unable to load video info. Check the URL and try again.'
       setError(message)
       setStatus('error')
     }
@@ -113,7 +119,7 @@ const trimmedUrl = videoUrl.trim()
             <div className="metadata-card">
               <img
                 className="thumbnail"
-                src={metadata.thumbnails[metadata.thumbnails.length - 1]?.url}
+                src={metadata.thumbnails?.[metadata.thumbnails.length - 1]?.url || ''}
                 alt={metadata.title}
               />
               <div className="metadata-body">

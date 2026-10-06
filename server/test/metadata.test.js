@@ -29,7 +29,18 @@ test('formatDownloadOptions converts ytdl-core-style formats into UI-friendly op
   ])
 
   assert.ok(formats.length >= 1)
-  assert.equal(formats[0].itag, '22')
+  assert.equal(formats[0].itag, 'height:720')
   assert.equal(formats[0].qualityLabel, '720p')
-  assert.equal(formats[0].container, 'mp4')
+  assert.equal(formats[0].container, 'mkv')
+})
+
+test('formatDownloadOptions excludes separate video-only and audio-only streams', () => {
+  const formats = formatDownloadOptions([
+    { format_id: '401', ext: 'mp4', height: 2160, vcodec: 'av01', acodec: 'none' },
+    { format_id: '140', ext: 'm4a', vcodec: 'none', acodec: 'mp4a' },
+    { format_id: '18', ext: 'mp4', height: 360, vcodec: 'avc1', acodec: 'mp4a', filesize: 1000 },
+  ])
+
+  assert.deepEqual(formats.map((format) => format.itag), ['height:2160', 'height:360'])
+  assert.equal(formats[0].qualityLabel, '2160p')
 })
