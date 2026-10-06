@@ -21,6 +21,10 @@ app.use(morgan('tiny'))
 app.use(express.json())
 app.use(express.static(path.join(__dirname, '../client/dist')))
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' })
+})
+
 const mongoUri = process.env.MONGODB_URI || (process.env.NODE_ENV === 'production' ? '' : 'mongodb://127.0.0.1:27017/ytd')
 if (mongoUri && process.env.NODE_ENV !== 'test') {
   mongoose
